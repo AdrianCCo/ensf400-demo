@@ -1,162 +1,103 @@
 pipeline {
     agent any
-    
+
     environment {
-        // Define environment variables
-        DOCKER_HUB_CREDS = credentials('docker-hub-credentials')
-        DOCKER_IMAGE_NAME = 'yourusername/your-application'
-        DOCKER_IMAGE_TAG = "${BUILD_NUMBER}-${GIT_COMMIT.substring(0, 7)}"
+        IMAGE_NAME = 'ensf400-project'
+        TAG = 'latest'
     }
-    
+
     stages {
-        stage('Checkout') {
-            steps {
-                // Checkout code from repository
-                checkout scm
-                echo "Checked out code from repository"
-            }
-        }
-        
+        // Stage for building the image
         stage('Build') {
             steps {
-                // Build application using Maven
-                sh 'mvn clean package -DskipTests'
-                echo "Application built successfully"
-            }
-        }
-        
-        stage('Unit Tests') {
-            steps {
-                // Run unit tests
-                sh 'mvn test'
-            }
-            post {
-                // Publish JUnit test results
-                always {
-                    junit '**/target/surefire-reports/*.xml'
-                    echo "Unit tests completed"
+                script {
+                    sh 'docker build -t $IMAGE_NAME:$TAG .'
                 }
             }
         }
-        
-        stage('Code Quality Analysis') {
-            steps {
-                // Run SonarQube analysis
-                withSonarQubeEnv('SonarQube') {
-                    sh 'mvn sonar:sonar'
-                }
-                echo "SonarQube analysis completed"
-            }
-        }
-        
-        stage('Generate Javadocs') {
-            steps {
-                // Generate Javadocs
-                sh 'mvn javadoc:javadoc'
-                echo "Javadocs generated successfully"
-            }
-            post {
-                success {
-                    // Archive Javadocs
-                    archiveArtifacts artifacts: 'target/site/apidocs/**', fingerprint: true
-                }
-            }
-        }
-        
-        stage('Security Scan') {
-            steps {
-                // Run OWASP Dependency Check
-                sh 'mvn org.owasp:dependency-check-maven:check'
-                echo "Security scan completed"
-            }
-            post {
-                always {
-                    // Publish dependency check results
-                    publishHTML(target: [
-                        allowMissing: false,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'target',
-                        reportFiles: 'dependency-check-report.html',
-                        reportName: 'Dependency Check Report'
-                    ])
-                }
-            }
-        }
-        
-        stage('Performance Testing') {
-            steps {
-                // Run JMeter tests
-                sh 'mvn jmeter:jmeter'
-                echo "Performance tests completed"
-            }
-            post {
-                always {
-                    // Publish JMeter results
-                    perfReport sourceDataFiles: 'target/jmeter/results/*.jtl', 
-                             errorFailedThreshold: 20, 
-                             errorUnstableThreshold: 10, 
-                             errorUnstableResponseTimeThreshold: '4000'
-                }
-            }
-        }
-        
-        stage('Build Docker Image') {
-            steps {
-                // Build Docker image
-                sh """
-                docker build -t ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} .
-                docker tag ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG} ${DOCKER_IMAGE_NAME}:latest
-                """
-                echo "Docker image built successfully"
-            }
-        }
-        
+
+        // Stage for pushing the image to DockerHub
         stage('Push to DockerHub') {
             steps {
-                // Login to DockerHub and push image
-                sh """
-                echo ${DOCKER_HUB_CREDS_PSW} | docker login -u ${DOCKER_HUB_CREDS_USR} --password-stdin
-                docker push ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}
-                docker push ${DOCKER_IMAGE_NAME}:latest
-                docker logout
-                """
-                echo "Docker image pushed to DockerHub"
-            }
-        }
-        
-        stage('Deploy Application') {
-            steps {
-                // Deploy the application
                 script {
-                    // Check if container is already running and stop it
-                    sh '''
-                    CONTAINER_ID=$(docker ps -q --filter name=your-application)
-                    if [ -n "$CONTAINER_ID" ]; then
-                        docker stop your-application
-                        docker rm your-application
-                    fi
-                    
-                    # Deploy the new container
-                    docker run -d --name your-application -p 8080:8080 ${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_TAG}
-                    '''
-                    echo "Application deployed successfully"
+                    withCredentials([usernamePassword(
+                        credentialsId: 'docker-hub-credentials',
+                        usernameVariable: 'DOCKER_HUB_USER',
+                        passwordVariable: 'DOCKER_HUB_PASS'
+                    )]) {
+                        sh '''
+                            echo "$DOCKER_HUB_PASS" | docker login -u "$DOCKER_HUB_USER" --password-stdin
+                            docker tag $IMAGE_NAME:$TAG $DOCKER_HUB_USER/$IMAGE_NAME:$TAG
+                            docker push $DOCKER_HUB_USER/$IMAGE_NAME:$TAG
+                        '''
+                    }
                 }
             }
         }
-    }
-    
-    post {
-        success {
-            echo "CI/CD Pipeline completed successfully!"
+
+        // Running the tests
+        stage('Unit Tests') {
+            agent {
+                docker {
+                    image 'gradle:7.6.1-jdk11'
+                }
+            }
+            steps {
+                sh './gradlew test'
+            }
+            post {
+                always {
+                    junit 'build/test-results/test/*.xml'
+                }
+            }
         }
-        failure {
-            echo "CI/CD Pipeline failed!"
-            // You can add notification steps here (email, Slack, etc.)
+
+        // Generate and save JavaDocs as an artifact
+        stage('Generate JavaDocs') {
+            agent {
+                docker {
+                    image 'gradle:7.6.1-jdk11'
+                }
+            }
+            steps {
+                sh './gradlew javadoc'
+                archiveArtifacts allowEmptyArchive: true, artifacts: 'build/docs/javadoc/**'
+            }
         }
-        always {
-            // Clean up workspace
-            cleanWs()
+
+        // Stage for pulling the image and running the application
+        stage('Deploy Application') {
+            steps {
+                script {
+                    withCredentials([usernamePassword(
+                        credentialsId: 'docker-hub-credentials',
+                        usernameVariable: 'DOCKER_HUB_USER',
+                        passwordVariable: 'DOCKER_HUB_PASS'
+                    )]) {
+                        sh '''
+                            echo "$DOCKER_HUB_PASS" | docker login -u "$DOCKER_HUB_USER" --password-stdin
+                            docker pull $DOCKER_HUB_USER/$IMAGE_NAME:$TAG
+                            docker run -di -p 8081:8080 $DOCKER_HUB_USER/$IMAGE_NAME:$TAG
+                        '''
+                    }
+                }
+            }
+        }
+
+        // Static Analysis with SonarQube (simplified version)
+        stage('Static Analysis') {
+            agent {
+                docker {
+                    image 'sonarsource/sonar-scanner-cli:latest'
+                }
+            }
+            environment {
+                SONAR_HOST_URL = 'http://your-sonarqube-server:9000'  // Update with your SonarQube server URL
+                SONAR_TOKEN = credentials('your-sonar-token-id')     // Jenkins credentials
+            }
+            steps {
+                sh './gradlew sonarqube -Dsonar.host.url=$SONAR_HOST_URL -Dsonar.login=$SONAR_TOKEN'
+            }
         }
     }
 }
