@@ -92,7 +92,7 @@ pipeline {
                 }
             }
             environment {
-                SONAR_HOST_URL = 'http://your-sonarqube-server:9000'  // Update with your SonarQube server URL
+                SONAR_HOST_URL = 'http://your-sonarqube-server:9000'  // Update with your SonarQube server URLa
                 SONAR_TOKEN = credentials('your-sonar-token-id')     // Jenkins credentials
             }
             steps {
@@ -101,3 +101,4 @@ pipeline {
         }
     }
 }
+
