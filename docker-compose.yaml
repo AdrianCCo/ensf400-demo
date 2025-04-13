@@ -1,39 +1,51 @@
-version: '3'
-
 services:
-  app:
-    build: .
-    ports:
-      - "8080:8080"
-    depends_on:
-      - sonarqube
-
   jenkins:
-    image: jenkins/jenkins:lts
+    build: ./jenkins
     privileged: true
     user: root
     ports:
-      - "8083:8080"
-      - "50000:50000"
+    - 8083:8080
+    - 50000:50000
+    container_name: jenkins
     volumes:
-      - jenkins_home:/var/jenkins_home
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - JAVA_OPTS=-Djenkins.install.runSetupWizard=false
-
+    - /home/codespace:/var/jenkins_home
+    - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - dev-network
+    depends_on:
+      - sonarqube
+    environment:     
   sonarqube:
     image: sonarqube:8.9-community
+    container_name: sonarqube
+    environment:
+      - SONARQUBE_JDBC_URL=jdbc:postgresql://db:5432/sonar
+      - SONARQUBE_JDBC_USERNAME=sonar
+      - SONARQUBE_JDBC_PASSWORD=sonar
     ports:
       - "9000:9000"
-    environment:
-      - SONAR_ES_BOOTSTRAP_CHECKS_DISABLE=true
     volumes:
       - sonarqube_data:/opt/sonarqube/data
-      - sonarqube_logs:/opt/sonarqube/logs
-      - sonarqube_extensions:/opt/sonarqube/extensions
+    networks:
+      - dev-network
+
+
+  db:
+    image: postgres:latest
+    container_name: sonar-db
+    environment:
+      - POSTGRES_USER=sonar
+      - POSTGRES_PASSWORD=sonar
+      - POSTGRES_DB=sonar
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    networks:
+      - dev-network
+
+networks:
+  dev-network:
 
 volumes:
   jenkins_home:
   sonarqube_data:
-  sonarqube_logs:
-  sonarqube_extensions:
+  db_data:
