@@ -95,7 +95,7 @@ pipeline {
         }      
       
       steps{
-        sh './gradlew sonarqube -Dsonar.host.url=http://sonarqube:9000 -Dsonar.login="admin" -Dsonar.password="new_admin"'
+        sh './gradlew sonarqube -Dsonar.host.url=https://bug-free-train-977r5wwj74jj2pv6p-9000.app.github.dev/ -Dsonar.login="admin" -Dsonar.password="new_admin"'
       }
     }
   }
