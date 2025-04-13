@@ -6,7 +6,7 @@ pipeline {
     JAVA_HOME = '/usr/lib/jvm/java-11-openjdk'
     PATH = "${JAVA_HOME}/bin:${PATH}"
     // GitHub credentials
-    GITHUB_CREDENTIALS = credentials('github-credentials')
+    GITHUB_CREDENTIALS = credentials('githubtoken')
   }
 
   stages {
@@ -45,7 +45,7 @@ pipeline {
   post {
     success {
       echo 'Build succeeded! Updating GitHub pull request status.'
-      withCredentials([string(credentialsId: 'github-token', variable: 'GITHUB_TOKEN')]) {
+      withCredentials([string(credentialsId: 'githubtoken', variable: 'GITHUB_TOKEN')]) {
         sh '''
           if [ -n "$CHANGE_ID" ]; then
             curl -s -X POST \
