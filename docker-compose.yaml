@@ -14,7 +14,6 @@ services:
       - dev-network
     depends_on:
       - sonarqube
-    environment:     
   sonarqube:
     image: sonarqube:8.9-community
     container_name: sonarqube
